@@ -1,0 +1,75 @@
+--Izdvajanje podataka iz vise tabela pod nekim uslovom
+ 
+select `teniser`.`ime` as `Ime`, `teniser`.`prezime` as `Prezime`, `drzava`.`naziv` as `Drzava` from `drzava`,`teniser`,`igra`,`mec` where `drzava`.`idDrzave`=`teniser`.`drzavljanstvo` and `teniser`.`brojLegitimacije`=`igra`.`brojLegitimacije`and `igra`.`rbMeca`=`mec`.`rbMeca` and `mec`.`fazaTakmicenja`= 'cetvrtina finala' order by prezime, ime asc;
+
+--Statistika
+
+select `teniser`.`ime` as `Ime`, `teniser`.`prezime` as `Prezime`, AVG(asevi) as `Prosecan broj aseva`, AVG(dupleGreske) as `Prosecan broj duplih gresaka`, max(winneri) as `Najveci broj vinera`, MIN(neprisiljeneGreske) as `Najmanji broj gresaka` from `teniser`, `igra`, `mec` where `teniser`.`brojLegitimacije` = `igra`.`brojLegitimacije` and `igra`.`rbMeca` = `mec`.`rbMeca` and `teniser`.`ime` = 'Novak' and `teniser`.`prezime` = 'Djokovic' and `mec`.`datum` < '2021-02-21' group by `teniser`.`ime`, `teniser`.`prezime` UNION select `teniser`.`ime` as `Ime`, `teniser`.`prezime` as `Prezime`, AVG(asevi) as `Prosecan broj aseva`, AVG(dupleGreske) as `Prosecan broj duplih gresaka`, max(winneri) as `Najveci broj vinera`, MIN(neprisiljeneGreske) as `Najmanji broj gresaka` from `teniser`, `igra`, `mec` where `teniser`.`brojLegitimacije` = `igra`.`brojLegitimacije` and `igra`.`rbMeca` = `mec`.`rbMeca` and `teniser`.`ime` = 'Danil' and `teniser`.`prezime` = 'Medvedev' and `mec`.`datum` < '2021-02-21' 21' group by `teniser`.`ime`, `teniser`.`prezime`;
+
+--Upit sa podupitom
+
+select `teniser`.`ime` as `Ime`, `teniser`.`prezime` as `Prezime`, `teniser`.`grendSlemTitule` as `Osvojene grend slem titule` from `teniser` where `teniser`.`grendSlemTitule` > (select MAX(grendSlemTitule) from `teniser`, `drzava` where `drzava`.`idDrzave`=`teniser`.`drzavljanstvo` and `teniser`.`drzavljanstvo`= '4' ) order by `teniser`.`grendSlemTitule` desc, `teniser`.`prezime` asc, `teniser`.`ime` ASC;
+
+--Pogled
+
+CREATE VIEW sudijasudimec
+AS
+SELECT `sudija`.`imeSudije` as `Ime`, `sudija`.`prezimeSudije` as `Prezime`, `mec`.`datum` as `Datum`, `mec`.`vreme` as `Vreme`, `mec`.`fazaTakmicenja` as `Faza takmicenja`
+FROM `sudija`,`mec`
+where `sudija`.`brSudije`=`mec`.`brSudije`
+ORDER BY `sudija`.`imeSudije` ASC, `sudija`.`prezimeSudije` ASC, `mec`.`datum` DESC, `mec`.`vreme` DESC;
+
+-- Uskladistena procedura
+
+DELIMITER //
+CREATE PROCEDURE boljerangiranilista
+(IN ime varchar (20), IN prezime varchar (30))
+BEGIN
+SELECT `teniser`.`ime` as `Ime`, `teniser`.`prezime` as `Prezime`, `teniser`.`trenutnaPozicija` as `Pozicija`
+FROM `teniser`
+WHERE `teniser`.`trenutnaPozicija` < (SELECT `teniser`.`trenutnaPozicija` FROM `teniser` WHERE `teniser`.`ime`= ime AND `teniser`.`prezime`= prezime)
+ORDER BY `teniser`.`trenutnaPozicija` ASC;
+END //
+DELIMITER;
+
+-- Okidac
+
+DELIMITER //
+CREATE TRIGGER setovi
+BEFORE INSERT ON mec
+FOR EACH ROW
+BEGIN
+IF (NEW.setDomacin < '0'  OR NEW.setDomacin > '3' )THEN
+SET NEW.setDomacin = '';
+END IF;
+IF (NEW.setGost < '0'  OR NEW.setGost > '3' ) THEN
+SET NEW.setGost = '';
+END IF;
+END; //
+DELIMITER ;
+
+-- Transakcija
+
+SET AUTOCOMMIT=0;
+START TRANSACTION;
+LOCK TABLES `drzava` WRITE;
+SET @iddrzave='';
+SET @nazivd='Hrvatska'; 
+SELECT CASE WHEN `idDrzave` is null then @iddrzave:=1 else @iddrzave:=max(`iddrzave`)+1 END FROM `drzava`;
+SELECT @iddrzave:=`idDrzave` FROM `drzava` WHERE `idDrzave`=@iddrzave;
+INSERT IGNORE INTO `drzava` VALUES (@iddrzave, @nazivd);
+LOCK TABLES `teniser` WRITE;
+SET @brojlegitimacije='cro1';
+SET @ime='Borna';
+SET @prezime='Coric';
+SET @trenutnaPozicija='89';
+SET @najboljaPozicija='12';
+SET @ukupnoPobeda='168';
+SET @ukupnoPoraza='143';
+SET @grendSlemTitule='';
+SELECT @brojlegitimacije:=`brojLegitimacije` FROM `teniser` WHERE `brojLegitimacije`=@brojlegitimacije;
+INSERT IGNORE INTO `teniser` (`brojLegitimacije`, `ime`, `prezime`, `drzavljanstvo`, `trenutnaPozicija`, `najboljaPozicija`, `ukupnoPobeda`, `ukupnoPoraza`, `grendSlemTitule`) VALUES (@brojlegitimacije, @ime, @prezime, @iddrzave, @trenutnaPozicija, @najboljaPozicija, @ukupnoPobeda, @ukupnoPoraza, @grendSlemTitule);
+UNLOCK TABLES;
+COMMIT;
+ROLLBACK;
+SET AUTOCOMMIT=1;
